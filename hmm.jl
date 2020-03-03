@@ -11,7 +11,7 @@ mutable struct Lattice
     word_dict::Dict{String, Int}
     state_dict::Dict{String, State}
     pos_count_dict::Dict{String, Int}
-    init_pis::Dict{String, Int}
+    init_pis::Dict{String, Float64}
 end
 Lattice() = Lattice(Dict{String, Int}(), 
                     Dict{String, Int}(),
@@ -26,9 +26,20 @@ Lattice() = Lattice(Dict{String, Int}(),
 Update the values in the lattice, which inlcude the following tags, tag and
 word association counts, and node/state insertions.
 """
-function update_lattice!(lat::Lattice, word_tag::Array, tag_id::Int, word_id::Int)
+function update_lattice!(lat::Lattice, word_tag::Array, tag_id::Int,
+                         word_id::Int, prev_tag::String)
     word = word_tag[1]
     tag = word_tag[2]
+
+    # TODO follow/next tag
+    if prev_tag != ""
+        if get(lat.state_dict[prev_tag].follow_tag, tag, 0) == 0
+            lat.state_dict[prev_tag].follow_tag[tag] = 1
+        else
+            lat.state_dict[prev_tag].follow_tag[tag] += 1
+        end
+    end
+
 
     if get(lat.pos_dict, tag, 0) == 0
         tag_id += 1
@@ -64,6 +75,7 @@ follow-tags are kept track of for hidden markov model implmentation
 function fit!(filename::String, lat::Lattice)
     tag_id = 0
     word_id = 0
+    prev_tag = ""
     start = true
 
     break_count = 0
@@ -75,12 +87,13 @@ function fit!(filename::String, lat::Lattice)
             else
                 word_tag = split(ln, '\t')
 
-                update_lattice!(lat, word_tag, tag_id, word_id)
+                update_lattice!(lat, word_tag, tag_id, word_id, prev_tag)
+                prev_tag = word_tag[2]
             end
 
             break_count += 1
 
-            if break_count == 30
+            if break_count == 15
                 break
             end
         end
