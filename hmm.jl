@@ -6,14 +6,14 @@ State() = State(Dict{String, Int}(),
                 Dict{String, Int}())
 
 
-mutable struct Lattice
+mutable struct Lexicon
     pos_dict::Dict{String, Int}
     word_dict::Dict{String, Int}
     state_dict::Dict{String, State}
     pos_count_vec::Vector{Int}
     init_pis::Vector{Float64}
 end
-Lattice() = Lattice(Dict{String, Int}(), 
+Lexicon() = Lexicon(Dict{String, Int}(), 
                     Dict{String, Int}(),
                     Dict{String, State}(),
                     Vector{Int}(),
@@ -21,44 +21,44 @@ Lattice() = Lattice(Dict{String, Int}(),
 
 
 """
-    update_lattice!(lattice, word_tag)
+    update_lexicon!(lex, word_tag)
 
-Update the values in the lattice, which inlcude the following tags, tag and
+Update the values in the lexicon, which inlcude the following tags, tag and
 word association counts, and node/state insertions.
 """
-function update_lattice!(lat::Lattice, word_tag::Array, tag_id::Int,
+function update_lexicon!(lex::Lexicon, word_tag::Array, tag_id::Int,
                          word_id::Int, prev_tag::String, start::Bool)
     word = word_tag[1]
     tag = word_tag[2]
 
     if prev_tag != ""
-        if get(lat.state_dict[prev_tag].follow_tag, tag, 0) == 0
-            lat.state_dict[prev_tag].follow_tag[tag] = 1
+        if get(lex.state_dict[prev_tag].follow_tag, tag, 0) == 0
+            lex.state_dict[prev_tag].follow_tag[tag] = 1
         else
-            lat.state_dict[prev_tag].follow_tag[tag] += 1
+            lex.state_dict[prev_tag].follow_tag[tag] += 1
         end
     end
 
-    if get(lat.pos_dict, tag, 0) == 0
-        lat.pos_dict[tag] = length(lat.pos_dict) + 1
-        lat.state_dict[tag] = State()
+    if get(lex.pos_dict, tag, 0) == 0
+        lex.pos_dict[tag] = length(lex.pos_dict) + 1
+        lex.state_dict[tag] = State()
 
-        push!(lat.pos_count_vec, 1)
-        push!(lat.init_pis, 0)
+        push!(lex.pos_count_vec, 1)
+        push!(lex.init_pis, 0)
     else
-        lat.pos_count_vec[lat.pos_dict[tag]] += 1
+        lex.pos_count_vec[lex.pos_dict[tag]] += 1
     end
 
-    start && (lat.init_pis[lat.pos_dict[tag]] += 1)
+    start && (lex.init_pis[lex.pos_dict[tag]] += 1)
 
-    if get(lat.word_dict, word, 0) == 0
-        lat.word_dict[word] = length(lat.word_dict) + 1
-        lat.state_dict[tag].assoc_words[word] = 1
+    if get(lex.word_dict, word, 0) == 0
+        lex.word_dict[word] = length(lex.word_dict) + 1
+        lex.state_dict[tag].assoc_words[word] = 1
     else
-        if get(lat.state_dict[tag].assoc_words, word, 0) == 0
-            lat.state_dict[tag].assoc_words[word] = 1
+        if get(lex.state_dict[tag].assoc_words, word, 0) == 0
+            lex.state_dict[tag].assoc_words[word] = 1
         else
-            lat.state_dict[tag].assoc_words[word] += 1
+            lex.state_dict[tag].assoc_words[word] += 1
         end
     end
 end
@@ -70,13 +70,14 @@ end
 Fit the given corpora to a Vocabulary. Occurences, associations and 
 follow-tags are kept track of for hidden markov model implmentation
 """
-function fit!(filename::String, lat::Lattice)
+function fit!(filename::String, lex::Lexicon)
     tag_id = 1
     word_id = 1
     prev_tag = ""
     start_count = 0
     is_start = true
 
+    #TODO remove
     break_count = 0
 
     open(filename) do file
@@ -86,7 +87,7 @@ function fit!(filename::String, lat::Lattice)
             else
                 word_tag = split(ln, '\t')
 
-                update_lattice!(lat, word_tag, tag_id, word_id,
+                update_lexicon!(lex, word_tag, tag_id, word_id,
                                 String(prev_tag), is_start)
                 if is_start
                     start_count += 1
@@ -96,17 +97,12 @@ function fit!(filename::String, lat::Lattice)
                 prev_tag = word_tag[2]
             end
 
-            break_count += 1
 
-            """
-            if break_count == 30
-                break
-            end
-            """
+            #break_count == 30 ? break : break_count += 1
         end
     end
 
-    lat.init_pis = lat.init_pis / sum(collect(values(lat.init_pis)))
+    lex.init_pis = lex.init_pis / sum(collect(values(lex.init_pis)))
 end
 
 
@@ -140,13 +136,103 @@ function obtain_tagless(filename::String)
 end
 
 
+"""
+    find_possible_tags(lex, sentence)
+
+Vector a vector of all the unique tags associated with the given sentence
+"""
+function find_possible_tags(lex::Lexicon, sentence::Vector{String})
+    associated_tags = Vector{String}()
+    for (tag, state) in lex.state_dict
+        for word in sentence
+            if word in keys(state.assoc_words)
+                push!(associated_tags, tag)
+                break
+            end
+        end
+    end
+
+    return associated_tags
+end
+
+
+"""
+    get_pi_proba(lex, tags)
+
+Return a vector of initial probabilities for the given tags
+"""
+function get_pi_proba(lex::Lexicon, tags::Vector{String})
+    pi_vec = Vector{Float64}()
+
+    for t in tags
+        push!(pi_vec, lex.init_pis[lex.pos_dict[t]])
+    end
+
+    return pi_vec
+end
+
+
+"""
+    get_emission_proba(lex, tags, word)
+
+Return a vector of observation likelihoods for the given word and its
+associated with the given tags
+"""
+function get_emission_proba(lex::Lexicon, tags::Vector{String}, word::String)
+    emission_vec = Vector{Float64}()
+
+    for t in tags
+        if get(lex.state_dict[t].assoc_words, word, 0) == 0
+            push!(emission_vec, 0)
+        else
+            tag_count = lex.pos_count_vec[lex.pos_dict[t]]
+            push!(emission_vec, lex.state_dict[t].assoc_words[word] / tag_count)
+        end
+    end
+
+    return emission_vec
+end
+
+
+"""
+    assign_first_col!(lat, lex, first_word, tags)
+
+Assign the first column of the lattice which the product of pi, the initial
+probability distribution and the observation likelihood
+"""
+function assign_first_col!(lat::Array{Float64}, lex::Lexicon, first_word::String,
+                          tags::Vector{String})
+    pi_vec = get_pi_proba(lex, tags)
+    emission_vec = get_emission_proba(lex, tags, first_word)
+
+    lat[:, 1] = pi_vec .* emission_vec
+
+    return lat
+end
+
+
+"""
+    generate_lattice(lex, sentence)
+
+Produce a probability matrix, lattice, for the given sentence.
+"""
+function generate_lattice(lex::Lexicon, sentence::Vector{String})
+    possible_tags = find_possible_tags(lex, sentence) 
+
+    lattice = zeros(length(possible_tags), length(sentence))
+    assign_first_col!(lattice, lex, sentence[1], possible_tags)
+
+    println(lattice)
+end
+
+
 function main(args)
-    lattice = Lattice()
+    lexicon = Lexicon()
     
-    fit!("./corpora/POS_train.pos", lattice)
+    fit!("./corpora/POS_train.pos", lexicon)
 
     tagless_words = obtain_tagless("./corpora/POS_dev.words")
-    println(tagless_words[1])
+    lattice = generate_lattice(lexicon, tagless_words[1])
 end
 
 main(ARGS)
