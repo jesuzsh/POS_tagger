@@ -190,6 +190,10 @@ function get_emission_proba(lex::Lexicon, tags::Vector{String}, word::String)
         end
     end
 
+    if findmax(emission_vec)[1] == 0
+        emission_vec = ones(length(emission_vec)) * (1 / length(tags))
+    end
+
     return emission_vec
 end
 
@@ -243,33 +247,26 @@ likelihood (emission probability)
 """
 function complete_lattice!(lat::Array{Float64}, lex::Lexicon,
                            sentence::Vector{String}, tags::Vector{String})
-    tag_check = Vector{String}()
-
     for i in 2:size(lat)[2]
         prev_vit, index = findmax(lat[:, i - 1])
         prev_tag = tags[index]
         
-        push!(tag_check, prev_tag)
-
         emission_vec = get_emission_proba(lex, tags, sentence[i])
         transition_vec = get_transition_proba(lex, tags, prev_tag)
 
         new_lat_col = emission_vec .* transition_vec
         lat[:, i] = new_lat_col * prev_vit
     end
-
-    println(tag_check)
 end
 
 
 """
-    generate_lattice(lex, sentence)
+    generate_lattice(lex, sentence, possible_tags)
 
 Produce a probability matrix, lattice, for the given sentence.
 """
-function generate_lattice(lex::Lexicon, sentence::Vector{String})
-    possible_tags = find_possible_tags(lex, sentence) 
-
+function generate_lattice(lex::Lexicon, sentence::Vector{String},
+                          possible_tags::Vector{String})
     lattice = zeros(length(possible_tags), length(sentence))
     assign_first_col!(lattice, lex, sentence[1], possible_tags)
     complete_lattice!(lattice, lex, sentence, possible_tags)
@@ -278,16 +275,58 @@ function generate_lattice(lex::Lexicon, sentence::Vector{String})
 end
 
 
+"""
+    gather_redictions(lat, possible_tags)
+
+Given a completed lattice, return a vector of most likely tags
+"""
+function gather_predictions(lat::Array{Float64}, possible_tags::Vector{String})
+    pred_tags = Vector{String}()
+
+    for i in 1:size(lat)[2]
+        push!(pred_tags, possible_tags[findmax(lat[:, i])[2]])
+    end
+
+    return pred_tags
+end
+
+
+"""
+    write_results(filename, results)
+
+Write results to file. Words followed by predicted tags
+"""
+function write_results(filename::String, results::Vector{Array{Tuple}})
+    open(filename, "w") do io
+        for r in results
+            for (word, tag) in r
+                write(io, "$(word)\t$(tag)\n")
+            end
+            write(io, "\n")
+        end
+    end
+end
+
+
 function main(args)
     lexicon = Lexicon()
     
-    fit!("./corpora/POS_train.pos", lexicon)
+   fit!("./corpora/POS_train.pos", lexicon)
 
     tagless_words = obtain_tagless("./corpora/POS_dev.words")
-    println("Working with the following sentence:\n$(tagless_words[1])")
-    lattice = generate_lattice(lexicon, tagless_words[1])
 
-    println(lattice)
+    output_vec = Vector{Array{Tuple}}()
+
+    for sentence in tagless_words
+        possible_tags = find_possible_tags(lexicon, sentence)
+
+        lattice = generate_lattice(lexicon, sentence, possible_tags)
+        pred_tags = gather_predictions(lattice, possible_tags)
+
+        push!(output_vec, [(word, tag) for (word, tag) in zip(sentence, pred_tags)])
+    end
+
+    write_results("./corpora/POS_dev.results", output_vec)
 end
 
 main(ARGS)
