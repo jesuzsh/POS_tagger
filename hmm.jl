@@ -311,7 +311,8 @@ end
 function main(args)
     lexicon = Lexicon()
     
-   fit!("./corpora/POS_train.pos", lexicon)
+    fit!("./corpora/POS_train.pos", lexicon)
+    #fit!("./corpora/POS_combined.pos", lexicon)
 
     tagless_words = obtain_tagless("./corpora/POS_dev.words")
 
