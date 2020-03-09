@@ -7,7 +7,8 @@
 # You need Python 3 to run this code
 # Format: python scorer.py keyFile responseFile
 
-### This code is adapted from a previous version by Ralph Grishman ###
+### This code was provided as starter code and is adapted from a previous ###
+### version by Ralph Grishman ###
 
 import sys
 
@@ -53,7 +54,7 @@ def score (keyFileName, responseFileName):
         print(str(correct) + " out of " + str(correct + incorrect) + " tags correct")
         accuracy = 100.0 * correct / (correct + incorrect)
         print("  accuracy: %f" % accuracy)
-#score ('key', 'response')
+
 
 if __name__ == '__main__':
         keyFile = sys.argv[1]

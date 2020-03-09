@@ -77,9 +77,6 @@ function fit!(filename::String, lex::Lexicon)
     start_count = 0
     is_start = true
 
-    #TODO remove
-    break_count = 0
-
     open(filename) do file
         for ln in eachline(file)
             if ln == ""
@@ -96,9 +93,6 @@ function fit!(filename::String, lex::Lexicon)
 
                 prev_tag = word_tag[2]
             end
-
-
-            #break_count == 30 ? break : break_count += 1
         end
     end
 
@@ -116,9 +110,6 @@ function obtain_tagless(filename::String)
     corpora_vec = Vector{Vector{String}}()
     sentence_vec = Vector{String}()
 
-    #TODO remove
-    break_count = 0
-
     open(filename) do file
         for ln in eachline(file)
             if ln == ""
@@ -127,8 +118,6 @@ function obtain_tagless(filename::String)
             else
                 push!(sentence_vec, ln)
             end 
-
-            #break_count == 100 ? break : break_count += 1
         end
     end
     
@@ -311,10 +300,9 @@ end
 function main(args)
     lexicon = Lexicon()
     
-    fit!("./corpora/POS_train.pos", lexicon)
-    #fit!("./corpora/POS_combined.pos", lexicon)
+    fit!(args[1], lexicon)
 
-    tagless_words = obtain_tagless("./corpora/POS_dev.words")
+    tagless_words = obtain_tagless(args[2])
 
     output_vec = Vector{Array{Tuple}}()
 
@@ -327,7 +315,7 @@ function main(args)
         push!(output_vec, [(word, tag) for (word, tag) in zip(sentence, pred_tags)])
     end
 
-    write_results("./corpora/POS_dev.results", output_vec)
+    write_results(args[3], output_vec)
 end
 
 main(ARGS)
